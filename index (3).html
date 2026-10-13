@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoCare Vehicle Service Management</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#172033;font:15px Arial,sans-serif}
+header{background:linear-gradient(120deg,#10213d,#2563eb);color:white;padding:28px 5%}header h1{margin:0 0 8px}
+main{max-width:1250px;width:92%;margin:24px auto}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat,.panel{background:white;border-radius:14px;padding:18px;box-shadow:0 4px 18px #0f172a0d;margin-bottom:18px}
+.stat span{color:#64748b;font-size:13px}.stat b{display:block;font-size:26px;color:#2563eb;margin-top:8px}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:12px;font-weight:bold;display:block;margin-bottom:5px;color:#475569}.field{margin-bottom:12px}
+input,select,textarea{width:100%;padding:10px;border:1px solid #d6deeb;border-radius:8px;font:inherit}textarea{min-height:60px}
+button{border:0;border-radius:8px;padding:10px 13px;font-weight:bold;cursor:pointer}.primary{background:#2563eb;color:white}.soft{background:#e8efff;color:#1d4ed8}.danger{background:#fee2e2;color:#991b1b}.wide{width:100%}
+.toolbar{display:grid;grid-template-columns:1fr 160px;gap:10px;margin-bottom:12px}.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #e5eaf2}th{background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase}
+.badge{padding:5px 8px;border-radius:18px;font-size:11px;font-weight:bold;white-space:nowrap}.Pending{background:#fef3c7;color:#92400e}.InProgress{background:#dbeafe;color:#1d4ed8}.Completed{background:#dcfce7;color:#166534}
+.actions{display:flex;gap:5px}.actions button{padding:7px;font-size:11px}.small{font-size:12px;color:#64748b;line-height:1.5}.empty{text-align:center;padding:25px;color:#64748b}.msg{display:none;padding:10px;border-radius:8px;margin-bottom:12px}.msg.show{display:block}.ok{background:#dcfce7;color:#166534}.err{background:#fee2e2;color:#991b1b}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}@media(max-width:500px){.formgrid,.toolbar{grid-template-columns:1fr}header h1{font-size:23px}}
+</style></head><body>
+<header><h1>🚘 AutoCare Service Manager</h1><div>Vehicle records • Service history • Maintenance costs</div></header>
+<main>
+<div class="stats">
+ <div class="stat"><span>Total Records</span><b id="total">0</b></div>
+ <div class="stat"><span>Pending</span><b id="pending">0</b></div>
+ <div class="stat"><span>In Progress</span><b id="progress">0</b></div>
+ <div class="stat"><span>Total Service Cost</span><b id="totalCost">₹0</b></div>
+</div>
+<div id="message" class="msg"></div>
+<div class="layout">
+<section class="panel"><h2 id="formTitle">＋ Add Service Record</h2>
+<form id="form">
+<div class="field"><label>Vehicle Number *</label><input id="vehicleNumber" required placeholder="TS09AB1234"></div>
+<div class="field"><label>Vehicle Model *</label><input id="vehicleModel" required placeholder="Honda City"></div>
+<div class="field"><label>Customer Name *</label><input id="customerName" required placeholder="Customer name"></div>
+<div class="field"><label>Phone</label><input id="phone" placeholder="Mobile number"></div>
+<div class="field"><label>Service Type *</label><select id="serviceType" required><option value="">Choose service</option><option>General Service</option><option>Oil Change</option><option>Engine Repair</option><option>Brake Service</option><option>Tyre Replacement</option><option>Battery Service</option><option>Other</option></select></div>
+<div class="formgrid"><div class="field"><label>Service Date *</label><input id="serviceDate" type="date" required></div><div class="field"><label>Cost (₹) *</label><input id="cost" type="number" min="0" required placeholder="1500"></div></div>
+<div class="field"><label>Status</label><select id="status"><option>Pending</option><option>In Progress</option><option>Completed</option></select></div>
+<div class="field"><label>Notes</label><textarea id="notes" placeholder="Repair notes or next service reminder"></textarea></div>
+<button class="primary wide" id="saveBtn">Save Service Record</button>
+<button type="button" class="soft wide" id="cancelBtn" style="display:none;margin-top:8px">Cancel Edit</button>
+</form>
+<p class="small">Demo mode saves records in this browser. Use the optional Node.js/Express/MongoDB backend for database storage.</p>
+</section>
+<section class="panel"><h2>📋 Vehicle Service History</h2>
+<div class="toolbar"><input id="search" placeholder="Search vehicle, model, customer"><select id="filter"><option value="">All statuses</option><option>Pending</option><option>In Progress</option><option>Completed</option></select></div>
+<div class="tablewrap"><table><thead><tr><th>Vehicle / Customer</th><th>Service</th><th>Date</th><th>Cost</th><th>Status</th><th>Actions</th></tr></thead><tbody id="records"></tbody></table></div>
+<div id="empty" class="empty">No matching records. Add a service record to begin.</div>
+</section></div></main>
+<script>
+const API="http://localhost:5000/api/services";
+const BACKEND=new URLSearchParams(location.search).get("backend")==="1";
+const $=id=>document.getElementById(id);let records=[],editing=null;
+const today=new Date().toISOString().slice(0,10);$("serviceDate").value=today;
+function message(t,err=false){$("message").textContent=t;$("message").className="msg show "+(err?"err":"ok");setTimeout(()=>$("message").className="msg",3000)}
+function escapeHTML(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function api(url,opts={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...opts});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.message||"API error");return j}
+function saveLocal(){localStorage.setItem("autocare_records",JSON.stringify(records))}
+async function load(){try{if(BACKEND){records=await api(API)}else{let saved=localStorage.getItem("autocare_records");records=saved?JSON.parse(saved):[
+{_id:"demo-1",vehicleNumber:"TS09AB1234",vehicleModel:"Honda City",customerName:"Ravi Kumar",phone:"",serviceType:"Oil Change",serviceDate:today,cost:1800,status:"Completed",notes:"Oil changed"},
+{_id:"demo-2",vehicleNumber:"TS10CD5678",vehicleModel:"Hyundai i20",customerName:"Priya",phone:"",serviceType:"Brake Service",serviceDate:today,cost:3200,status:"In Progress",notes:"Brake check"}];saveLocal()}render()}catch(e){message("Backend error: "+e.message,true)}}
+function formData(){return {vehicleNumber:$("vehicleNumber").value.trim().toUpperCase(),vehicleModel:$("vehicleModel").value.trim(),customerName:$("customerName").value.trim(),phone:$("phone").value.trim(),serviceType:$("serviceType").value,serviceDate:$("serviceDate").value,cost:Number($("cost").value),status:$("status").value,notes:$("notes").value.trim()}}
+$("form").addEventListener("submit",async e=>{e.preventDefault();let item=formData();try{if(BACKEND){if(editing)await api(API+"/"+editing,{method:"PUT",body:JSON.stringify(item)});else await api(API,{method:"POST",body:JSON.stringify(item)})}else{if(editing)records=records.map(x=>x._id===editing?{...item,_id:editing}:x);else records.unshift({...item,_id:String(Date.now())});saveLocal()}message(editing?"Record updated":"Service record added");resetForm();await load()}catch(err){message(err.message,true)}});
+function resetForm(){$("form").reset();$("serviceDate").value=today;editing=null;$("formTitle").textContent="＋ Add Service Record";$("saveBtn").textContent="Save Service Record";$("cancelBtn").style.display="none"}
+$("cancelBtn").onclick=resetForm;
+function editRecord(id){let x=records.find(r=>r._id===id);if(!x)return;editing=id;["vehicleNumber","vehicleModel","customerName","phone","serviceType","serviceDate","status","notes"].forEach(k=>$(k).value=x[k]||"");$("cost").value=x.cost;$("formTitle").textContent="✎ Edit Service Record";$("saveBtn").textContent="Update Record";$("cancelBtn").style.display="block";window.scrollTo({top:0,behavior:"smooth"})}
+async function deleteRecord(id){if(!confirm("Delete this record?"))return;try{if(BACKEND)await api(API+"/"+id,{method:"DELETE"});else{records=records.filter(x=>x._id!==id);saveLocal()}message("Record deleted");await load()}catch(e){message(e.message,true)}}
+function render(){let q=$("search").value.toLowerCase(),f=$("filter").value;let list=records.filter(x=>(!f||x.status===f)&&[x.vehicleNumber,x.vehicleModel,x.customerName].some(v=>(v||"").toLowerCase().includes(q)));
+$("records").innerHTML=list.map(x=>`<tr><td><b>${escapeHTML(x.vehicleNumber)}</b><br>${escapeHTML(x.vehicleModel)}<br><small>${escapeHTML(x.customerName)}</small></td><td>${escapeHTML(x.serviceType)}</td><td>${escapeHTML(x.serviceDate)}</td><td>₹${Number(x.cost).toLocaleString("en-IN")}</td><td><span class="badge ${x.status.replace(" ","")}">${escapeHTML(x.status)}</span></td><td><div class="actions"><button class="soft" onclick="editRecord('${x._id}')">Edit</button><button class="danger" onclick="deleteRecord('${x._id}')">Delete</button></div></td></tr>`).join("");
+$("empty").style.display=list.length?"none":"block";$("total").textContent=records.length;$("pending").textContent=records.filter(x=>x.status==="Pending").length;$("progress").textContent=records.filter(x=>x.status==="In Progress").length;$("totalCost").textContent="₹"+records.reduce((s,x)=>s+Number(x.cost||0),0).toLocaleString("en-IN")}
+$("search").addEventListener("input",render);$("filter").addEventListener("change",render);load();
+</script></body></html>
